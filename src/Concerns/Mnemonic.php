@@ -2,8 +2,8 @@
 
 namespace ItHealer\LaravelEthereum\Concerns;
 
-use FurqanSiddiqui\BIP39\BIP39;
-use FurqanSiddiqui\BIP39\Language\English;
+use ItHealer\LaravelEthereum\BIP39\BIP39;
+use ItHealer\LaravelEthereum\BIP39\Language\English;
 
 trait Mnemonic
 {
@@ -35,7 +35,7 @@ trait Mnemonic
         return true;
     }
 
-    public function mnemonicSeed(string|array $mnemonic, string $passphrase = null): string
+    public function mnemonicSeed(string|array $mnemonic, ?string $passphrase = null): string
     {
         if (!is_array($mnemonic)) {
             $mnemonic = explode(' ', $mnemonic);
