@@ -162,9 +162,17 @@ class AddressSync extends BaseSync
             $this->handleTokenTransaction($item);
         }
 
+        /*
+         * Explorer indexes transactions with a delay: a transaction already mined by the
+         * node may not be returned by the explorer yet. Keep an overlap of `lag_blocks`
+         * behind the node head so the next sync re-checks recent blocks instead of
+         * skipping them forever. Re-processing is idempotent (updateOrCreate by txid).
+         */
+        $lagBlocks = (int) config('ethereum.sync.lag_blocks', 20);
+
         $this->address->update([
             'sync_at' => Date::now(),
-            'sync_block_number' => $this->blockNumber,
+            'sync_block_number' => max(0, $this->blockNumber - $lagBlocks),
         ]);
 
         return $this;

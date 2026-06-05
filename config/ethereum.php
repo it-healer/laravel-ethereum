@@ -19,6 +19,19 @@ return [
     ],
 
     /*
+     * Address synchronization settings.
+     */
+    'sync' => [
+        /*
+         * Explorers (Etherscan etc.) index transactions with a delay relative to the
+         * node head. Each sync keeps this many blocks of overlap behind the current
+         * block, so transactions indexed late are still picked up on the next run.
+         * ~20 blocks is about 4 minutes of overlap.
+         */
+        'lag_blocks' => 20,
+    ],
+
+    /*
      * Sets the handler to be used when Ethereum Wallet
      * receives a new deposit.
      */
