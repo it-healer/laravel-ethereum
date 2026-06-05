@@ -4,6 +4,7 @@ namespace ItHealer\LaravelEthereum\Api\Node;
 
 use Brick\Math\BigDecimal;
 use Brick\Math\BigInteger;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use kornrunner\Ethereum\Transaction;
@@ -20,6 +21,39 @@ class NodeApi
     {
         $this->baseURL = $baseURL;
         $this->proxy = $this->formatProxy($proxy);
+    }
+
+    /**
+     * Отправка транзакции с безопасным выделением nonce.
+     *
+     * Нода может не отражать только что отправленные транзакции в
+     * eth_getTransactionCount(pending) (лаг мемпула, балансировщик нод),
+     * из-за чего последовательные транзакции получают одинаковый nonce и
+     * вытесняют друг друга из мемпула. Поэтому:
+     *  - отправки с одного адреса сериализуются через Cache::lock;
+     *  - используется max(nonce ноды, локально зарезервированный nonce);
+     *  - после успешной отправки следующий nonce запоминается в кэше
+     *    (TTL 10 минут — страховка на случай вытеснения транзакции).
+     *
+     * @param  callable(int $nonce): string  $buildRawTransaction  возвращает подписанную raw-транзакцию ('0x...')
+     */
+    protected function sendWithSafeNonce(string $from, callable $buildRawTransaction): string
+    {
+        $from = Str::lower($from);
+        $lock = Cache::lock('ethereum:transfer-lock:'.$from, 60);
+
+        return $lock->block(60, function () use ($from, $buildRawTransaction): string {
+            $chainNonce = hexdec(substr($this->rpc('eth_getTransactionCount', [$from, 'pending']), 2));
+            $localNonce = (int) Cache::get('ethereum:next-nonce:'.$from, 0);
+            $nonce = max($chainNonce, $localNonce);
+
+            $raw = $buildRawTransaction($nonce);
+            $txid = $this->rpc('eth_sendRawTransaction', [$raw]);
+
+            Cache::put('ethereum:next-nonce:'.$from, $nonce + 1, now()->addMinutes(10));
+
+            return $txid;
+        });
     }
 
     public function rpc(string $method, array $params = []): mixed
@@ -247,21 +281,21 @@ class NodeApi
             throw new \Exception($preview->error());
         }
 
-        $nonce = $this->rpc('eth_getTransactionCount', [$from, 'pending']);
         $gasPrice = static::bigDecimalToHex($preview->gasPrice());
         $gasLimit = static::bigDecimalToHex($preview->gasLimit());
 
-        $tx = new Transaction(
-            nonce: substr($nonce, 2),
-            gasPrice: $gasPrice,
-            gasLimit: $gasLimit,
-            to: $preview->to(),
-            value: '0x'.static::bigDecimalToHex($amount->multipliedBy(pow(10, 18))),
-            data: ''
-        );
+        $txid = $this->sendWithSafeNonce($from, function (int $nonce) use ($preview, $gasPrice, $gasLimit, $amount, $privateKey): string {
+            $tx = new Transaction(
+                nonce: dechex($nonce),
+                gasPrice: $gasPrice,
+                gasLimit: $gasLimit,
+                to: $preview->to(),
+                value: '0x'.static::bigDecimalToHex($amount->multipliedBy(pow(10, 18))),
+                data: ''
+            );
 
-        $raw = '0x'.$tx->getRaw($privateKey, 1);
-        $txid = $this->rpc('eth_sendRawTransaction', [$raw]);
+            return '0x'.$tx->getRaw($privateKey, 1);
+        });
 
         return TransferDTO::make([
             ...$preview->toArray(),
@@ -366,21 +400,21 @@ class NodeApi
             throw new \Exception($preview->error());
         }
 
-        $nonce = $this->rpc('eth_getTransactionCount', [$from, 'pending']);
         $gasPrice = $preview->gasPrice()->toBigInteger()->toBase(16);
         $gasLimit = $preview->gasLimit()->toBigInteger()->toBase(16);
 
-        $tx = new Transaction(
-            nonce: substr($nonce, 2),
-            gasPrice: $gasPrice,
-            gasLimit: $gasLimit,
-            to: $preview->contract(),
-            value: '',
-            data: $preview->data()
-        );
+        $txid = $this->sendWithSafeNonce($from, function (int $nonce) use ($preview, $gasPrice, $gasLimit, $privateKey): string {
+            $tx = new Transaction(
+                nonce: dechex($nonce),
+                gasPrice: $gasPrice,
+                gasLimit: $gasLimit,
+                to: $preview->contract(),
+                value: '',
+                data: $preview->data()
+            );
 
-        $raw = '0x'.$tx->getRaw($privateKey, 1);
-        $txid = $this->rpc('eth_sendRawTransaction', [$raw]);
+            return '0x'.$tx->getRaw($privateKey, 1);
+        });
 
         return TransferDTO::make([
             ...$preview->toArray(),
@@ -494,24 +528,22 @@ class NodeApi
             throw new \Exception($preview->error());
         }
 
-        // Получаем nonce и готовим данные для транзакции
-        $nonce = $this->rpc('eth_getTransactionCount', [$from, 'pending']);
         $gasPrice = $preview->gasPrice()->toBigInteger()->toBase(16);
         $gasLimit = $preview->gasLimit()->toBigInteger()->toBase(16);
 
-        // Формируем транзакцию с методом transferFrom
-        $tx = new Transaction(
-            nonce: substr($nonce, 2),
-            gasPrice: $gasPrice,
-            gasLimit: $gasLimit,
-            to: $preview->contract(),
-            value: '',
-            data: $preview->data()
-        );
+        // Формируем, подписываем и отправляем транзакцию с безопасным nonce
+        $txid = $this->sendWithSafeNonce($from, function (int $nonce) use ($preview, $gasPrice, $gasLimit, $privateKey): string {
+            $tx = new Transaction(
+                nonce: dechex($nonce),
+                gasPrice: $gasPrice,
+                gasLimit: $gasLimit,
+                to: $preview->contract(),
+                value: '',
+                data: $preview->data()
+            );
 
-        // Подписываем и отправляем транзакцию
-        $raw = '0x' . $tx->getRaw($privateKey, 1);
-        $txid = $this->rpc('eth_sendRawTransaction', [$raw]);
+            return '0x' . $tx->getRaw($privateKey, 1);
+        });
 
         return TransferDTO::make([
             ...$preview->toArray(),
