@@ -2,7 +2,7 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
-## v1.0.2 - 2026-06-05
+## v1.0.3 - 2026-06-05
 
 ### Fixed
 
