@@ -142,7 +142,9 @@ class AddressSync extends BaseSync
 
         /** @var TransactionDTO $item */
         foreach ($paginator as $item) {
+            $this->checkCancelled();
             $this->handleTransaction($item);
+            $this->reportProgress('transactions');
         }
 
         $this->address->update([
@@ -159,7 +161,9 @@ class AddressSync extends BaseSync
 
         /** @var TokenTransactionDTO $item */
         foreach ($paginator as $item) {
+            $this->checkCancelled();
             $this->handleTokenTransaction($item);
+            $this->reportProgress('token_transactions');
         }
 
         /*

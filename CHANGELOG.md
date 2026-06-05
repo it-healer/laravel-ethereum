@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
+## v1.0.7 - 2026-06-05
+
+### Added
+
+- `BaseSync::onProgress(fn(int \$processed, string \$stage))` and `BaseSync::cancelWhen(fn(): bool)` hooks; `AddressSync` reports progress per processed transaction and aborts with `SyncCancelledException` when the cancel callback returns true (without advancing `sync_block_number`).
+
 ## v1.0.6 - 2026-06-05
 
 ### Fixed
