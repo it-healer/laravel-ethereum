@@ -19,6 +19,18 @@ return [
     ],
 
     /*
+     * Explorer API settings.
+     */
+    'explorer' => [
+        /*
+         * Chain id sent with every explorer request (required by Etherscan API V2).
+         * 1 = Ethereum mainnet. Use the V2 endpoint as explorer base URL:
+         * https://api.etherscan.io/v2/api
+         */
+        'chain_id' => 1,
+    ],
+
+    /*
      * Address synchronization settings.
      */
     'sync' => [

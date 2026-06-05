@@ -4,6 +4,7 @@ namespace ItHealer\LaravelEthereum\Api\Explorer;
 
 use Closure;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use ItHealer\LaravelEthereum\Api\DTOPaginator;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\ApiLimitDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\GasOracleDTO;
@@ -33,6 +34,8 @@ class ExplorerApi
             ]);
 
         $response = $client->get('', [
+            // Etherscan API V2 requires an explicit chain id (V1 ignored extra params)
+            'chainid' => (int) config('ethereum.explorer.chain_id', 1),
             ...$params,
             'apikey' => $this->apiKey,
         ]);
@@ -47,7 +50,21 @@ class ExplorerApi
             throw new \Exception($response->body());
         }
 
-        return $result['status'] === '1' ? $result['result'] : [];
+        if (($result['status'] ?? null) !== '1') {
+            $resultText = is_string($result['result'] ?? null) ? $result['result'] : json_encode($result['result'] ?? null);
+            $haystack = Str::lower(($result['message'] ?? '').' '.$resultText);
+
+            // Empty result set is not an error
+            if (Str::contains($haystack, 'no transactions found')) {
+                return [];
+            }
+
+            // Real API errors (deprecated endpoint, invalid key, rate limit, …)
+            // must surface instead of being silently treated as "no transactions"
+            throw new \Exception('Explorer API error: '.($resultText ?: ($result['message'] ?? 'unknown error')));
+        }
+
+        return $result['result'];
     }
 
     protected function formatProxy(?string $proxy): ?string

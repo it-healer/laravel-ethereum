@@ -2,6 +2,13 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
+## v1.0.6 - 2026-06-05
+
+### Fixed
+
+- Etherscan API V2 support: every explorer request now sends `chainid` (configurable via `ethereum.explorer.chain_id`, default 1). Use `https://api.etherscan.io/v2/api` as the explorer base URL — the V1 endpoint has been shut down by Etherscan.
+- Explorer API errors (deprecated endpoint, invalid key, rate limits) now throw instead of being silently treated as an empty transaction list, which combined with the sync window advance caused deposits to be lost.
+
 ## v1.0.5 - 2026-06-05
 
 ### Fixed
