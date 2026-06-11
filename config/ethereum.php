@@ -44,6 +44,19 @@ return [
     ],
 
     /*
+     * Wallet settings.
+     */
+    'wallet' => [
+        /*
+         * Default BIP-44 derivation path template used when creating a wallet.
+         * The {index} placeholder is replaced with the address index.
+         * Presets: Ethereum::PATH_BIP44 (MetaMask and most software wallets),
+         * Ethereum::PATH_LEDGER_LIVE, Ethereum::PATH_LEDGER_LEGACY.
+         */
+        'default_derivation_path' => "m/44'/60'/0'/0/{index}",
+    ],
+
+    /*
      * Sets the handler to be used when Ethereum Wallet
      * receives a new deposit.
      */

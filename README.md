@@ -96,6 +96,29 @@ use \ItHealer\LaravelEthereum\Facades\Ethereum;
 $wallet = Ethereum::createWallet('My wallet');
 ```
 
+### Custom derivation path
+
+Different wallets use different BIP-44 paths. The path template is stored per wallet
+(the `{index}` placeholder is replaced with the address index); the default is the
+standard `m/44'/60'/0'/0/{index}` used by MetaMask and most software wallets, so
+existing wallets and projects are not affected.
+
+```php
+use \ItHealer\LaravelEthereum\Ethereum as EthereumCore;
+use \ItHealer\LaravelEthereum\Facades\Ethereum;
+
+// Ledger Live: m/44'/60'/{index}'/0/0
+$wallet = Ethereum::createWallet('Ledger', derivationPath: EthereumCore::PATH_LEDGER_LIVE);
+
+// Ledger Legacy / MyEtherWallet: m/44'/60'/0'/{index}
+$wallet = Ethereum::createWallet('Old Ledger', derivationPath: EthereumCore::PATH_LEDGER_LEGACY);
+
+// Any custom template
+$wallet = Ethereum::createWallet('Custom', derivationPath: "m/44'/60'/1'/0/{index}");
+```
+
+The default template can be changed via `config('ethereum.wallet.default_derivation_path')`.
+
 ## Support
 
 - Telegram: [@biodynamist](https://t.me/biodynamist)

@@ -17,9 +17,10 @@ trait Address
         EthereumWallet $wallet,
         ?string $title = null,
         ?int $index = null,
-        ?string $seed = null
+        ?string $seed = null,
+        ?string $derivationPath = null
     ): EthereumAddress {
-        $address = $this->newAddress($wallet, $title, $index, $seed);
+        $address = $this->newAddress($wallet, $title, $index, $seed, $derivationPath);
         $address->save();
 
         return $address;
@@ -29,7 +30,8 @@ trait Address
         EthereumWallet $wallet,
         ?string $title = null,
         ?int $index = null,
-        ?string $seed = null
+        ?string $seed = null,
+        ?string $derivationPath = null
     ): EthereumAddress {
         if ($index === null) {
             $index = $wallet->addresses()->max('index');
@@ -44,9 +46,11 @@ trait Address
             throw new \Exception('Argument Seed is required.');
         }
 
+        $derivationPath ??= $wallet->derivation_path
+            ?? config('ethereum.wallet.default_derivation_path', \ItHealer\LaravelEthereum\Ethereum::PATH_BIP44);
+
         $hdKey = BIP44::fromMasterSeed($seed)
-            ->derive("m/44'/60'/0'/0")
-            ->deriveChild($index);
+            ->derive($this->resolveDerivationPath($derivationPath, $index));
         $privateKey = (string)$hdKey->privateKey;
 
         $addressString = '0x'.(new \kornrunner\Ethereum\Address($privateKey))->get();
@@ -64,6 +68,32 @@ trait Address
         $address->private_key = $privateKey;
 
         return $address;
+    }
+
+    /**
+     * Resolves a derivation path template (e.g. "m/44'/60'/0'/0/{index}")
+     * into a concrete path for the given address index.
+     */
+    public function resolveDerivationPath(string $pathTemplate, int $index): string
+    {
+        $path = str_replace('{index}', (string)$index, $pathTemplate);
+
+        if (!$this->validateDerivationPath($path)) {
+            throw new \InvalidArgumentException("Invalid derivation path: {$path}");
+        }
+
+        if (!str_contains($pathTemplate, '{index}') && $index > 0) {
+            throw new \InvalidArgumentException(
+                "Derivation path template \"{$pathTemplate}\" has no {index} placeholder, only index 0 is allowed."
+            );
+        }
+
+        return $path;
+    }
+
+    public function validateDerivationPath(string $path): bool
+    {
+        return (bool)preg_match("/^m(\/\d+'?)+$/", str_replace('{index}', '0', $path));
     }
 
     public function importAddress(EthereumWallet $wallet, string $address)

@@ -2,6 +2,17 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
+## v1.0.8 - 2026-06-11
+
+### Added
+
+- Custom BIP-44 derivation path per wallet: `createWallet()` / `generateWallet()` / `importWallet()` / `newWallet()` accept an optional `derivationPath` template (`{index}` placeholder), stored in the new `ethereum_wallets.derivation_path` column. Presets: `Ethereum::PATH_BIP44` (default, MetaMask), `Ethereum::PATH_LEDGER_LIVE`, `Ethereum::PATH_LEDGER_LEGACY`. The default template is configurable via `ethereum.wallet.default_derivation_path`.
+- `Ethereum::resolveDerivationPath()` and `Ethereum::validateDerivationPath()` helpers; `createAddress()` / `newAddress()` accept a one-off `derivationPath` override.
+
+### Notes
+
+- Fully backward compatible: the new parameters are appended last and optional, the column defaults to the standard `m/44'/60'/0'/0/{index}`, and deriving by the full path produces byte-identical keys to the previous `derive("m/44'/60'/0'/0")->deriveChild($index)` implementation.
+
 ## v1.0.7 - 2026-06-05
 
 ### Added

@@ -18,6 +18,7 @@ trait Wallet
         ?bool $savePassword = true,
         ?EthereumNode $node = null,
         ?EthereumExplorer $explorer = null,
+        ?string $derivationPath = null,
     ): EthereumWallet {
         if (is_array($mnemonic)) {
             $mnemonic = implode(" ", $mnemonic);
@@ -33,6 +34,7 @@ trait Wallet
             'explorer_id' => $explorer?->id,
             'name' => $name,
         ]);
+        $wallet->derivation_path = $this->walletDerivationPath($derivationPath);
         $wallet->unlockWallet($password);
         if ($savePassword) {
             $wallet->password = $password;
@@ -51,6 +53,7 @@ trait Wallet
         ?bool $savePassword = true,
         ?EthereumNode $node = null,
         ?EthereumExplorer $explorer = null,
+        ?string $derivationPath = null,
     ): EthereumWallet {
         $mnemonic = Ethereum::mnemonicGenerate($mnemonicSize ?? 18);
         $seed = Ethereum::mnemonicSeed($mnemonic, $passphrase);
@@ -63,6 +66,7 @@ trait Wallet
             'explorer_id' => $explorer?->id,
             'name' => $name,
         ]);
+        $wallet->derivation_path = $this->walletDerivationPath($derivationPath);
         $wallet->unlockWallet($password);
         if ($savePassword) {
             $wallet->password = $password;
@@ -79,6 +83,7 @@ trait Wallet
         ?bool $savePassword = true,
         ?EthereumNode $node = null,
         ?EthereumExplorer $explorer = null,
+        ?string $derivationPath = null,
     ): EthereumWallet {
         /** @var class-string<EthereumWallet> $walletModel */
         $walletModel = Ethereum::getModel(EthereumModel::Wallet);
@@ -88,6 +93,7 @@ trait Wallet
             'explorer_id' => $explorer?->id,
             'name' => $name,
         ]);
+        $wallet->derivation_path = $this->walletDerivationPath($derivationPath);
         $wallet->unlockWallet($password);
         if ($savePassword) {
             $wallet->password = $password;
@@ -104,6 +110,7 @@ trait Wallet
         ?string $passphrase = null,
         ?EthereumNode $node = null,
         ?EthereumExplorer $explorer = null,
+        ?string $derivationPath = null,
     ): EthereumWallet {
         if (is_string($mnemonic)) {
             $mnemonic = explode(' ', $mnemonic);
@@ -121,6 +128,7 @@ trait Wallet
             'explorer_id' => $explorer?->id,
             'name' => $name,
         ]);
+        $wallet->derivation_path = $this->walletDerivationPath($derivationPath);
         $wallet->unlockWallet($password);
         if ($savePassword) {
             $wallet->password = $password;
@@ -132,5 +140,22 @@ trait Wallet
         Ethereum::createAddress($wallet, 'Primary Address', 0);
 
         return $wallet;
+    }
+
+    /**
+     * Validates the wallet derivation path template, falling back to the configured default.
+     */
+    protected function walletDerivationPath(?string $derivationPath): string
+    {
+        $derivationPath ??= config(
+            'ethereum.wallet.default_derivation_path',
+            \ItHealer\LaravelEthereum\Ethereum::PATH_BIP44
+        );
+
+        if (!Ethereum::validateDerivationPath($derivationPath)) {
+            throw new \InvalidArgumentException("Invalid derivation path template: {$derivationPath}");
+        }
+
+        return $derivationPath;
     }
 }
