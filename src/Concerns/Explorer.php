@@ -36,7 +36,7 @@ trait Explorer
         $explorer = new $explorerModel([
             'name' => $name,
             'title' => $title,
-            'base_url' => 'https://api.etherscan.io/api',
+            'base_url' => 'https://api.etherscan.io/v2/api',
             'api_key' => $apiKey,
             'proxy' => $proxy,
             'requests' => 1,
