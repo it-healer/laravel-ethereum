@@ -54,6 +54,48 @@ return [
          * ~20 blocks is about 4 minutes of overlap.
          */
         'lag_blocks' => 20,
+
+        /*
+         * Track outgoing transfers in addition to incoming ones. On the Alchemy explorer
+         * driver, disabling this halves the alchemy_getAssetTransfers requests (and CU).
+         */
+        'track_outgoing' => (bool) env('ETHEREUM_SYNC_TRACK_OUTGOING', true),
+    ],
+
+    /*
+     * Confirmations target used by ethereum:confirm-deposits to decide which deposits
+     * still need a top-up sync (relevant when deposits arrive via Alchemy webhooks).
+     */
+    'confirmations_target' => (int) env('ETHEREUM_CONFIRMATIONS_TARGET', 12),
+
+    /*
+     * Compute Unit (CU) cost overrides per RPC method (meters node/explorer credits,
+     * reset monthly, least-used picked). Defaults mirror Alchemy — see
+     * \ItHealer\LaravelEthereum\Services\Alchemy\ComputeUnits.
+     */
+    'compute_units' => [],
+
+    /*
+     * Alchemy Notify (Address Activity webhooks). See README for setup.
+     */
+    'alchemy' => [
+        'auth_token' => env('ETHEREUM_ALCHEMY_NOTIFY_AUTH_TOKEN'),
+
+        'api_url' => 'https://dashboard.alchemy.com/api',
+
+        'webhook' => [
+            'enabled' => (bool) env('ETHEREUM_ALCHEMY_WEBHOOK_ENABLED', false),
+            'path' => env('ETHEREUM_ALCHEMY_WEBHOOK_PATH', 'ethereum/alchemy/webhook'),
+            'url' => env('ETHEREUM_ALCHEMY_WEBHOOK_URL'),
+            'middleware' => [],
+        ],
+
+        'auto_subscribe' => (bool) env('ETHEREUM_ALCHEMY_AUTO_SUBSCRIBE', false),
+
+        'queue' => [
+            'connection' => env('ETHEREUM_ALCHEMY_QUEUE_CONNECTION'),
+            'name' => env('ETHEREUM_ALCHEMY_QUEUE_NAME'),
+        ],
     ],
 
     /*
@@ -93,5 +135,6 @@ return [
         'address' => \ItHealer\LaravelEthereum\Models\EthereumAddress::class,
         'transaction' => \ItHealer\LaravelEthereum\Models\EthereumTransaction::class,
         'deposit' => \ItHealer\LaravelEthereum\Models\EthereumDeposit::class,
+        'alchemy_webhook' => \ItHealer\LaravelEthereum\Models\EthereumAlchemyWebhook::class,
     ],
 ];

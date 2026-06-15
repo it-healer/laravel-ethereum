@@ -147,6 +147,48 @@ $wallet->addresses()->update(['touch_at' => now()]);
 Defaults (`fast_interval` 0, `slow_interval` null) preserve the legacy behavior: active addresses
 sync every run, idle ones are skipped. `ethereum:address-sync --force` bypasses the schedule.
 
+## Alchemy support
+
+Alchemy can be used both as an **RPC node** and as a **transaction-history explorer**
+(`alchemy_getAssetTransfers`), and for **real-time deposits** via Address Activity webhooks.
+
+```php
+// RPC node + Alchemy explorer (drop-in alternative to Etherscan)
+Ethereum::createAlchemyNode(apiKey: 'YOUR_ALCHEMY_KEY', name: 'alchemy');
+Ethereum::createAlchemyExplorer(apiKey: 'YOUR_ALCHEMY_KEY', name: 'alchemy');
+```
+
+The explorer is driver-based (`ethereum_explorers.driver` = `etherscan_v2` | `alchemy`); the
+sync, deposits and webhook handler are unchanged. The chain is taken from
+`config('ethereum.explorer.chain_id')` (1 = mainnet, 11155111 = Sepolia).
+
+### Compute Units & load balancing
+
+Every node/explorer request is metered in a `credits` counter (Compute Units) that resets monthly;
+`getNode()`/`getExplorer()` pick the least-used one, spreading load and Alchemy CU spend. CU costs
+come from `ItHealer\LaravelEthereum\Services\Alchemy\ComputeUnits` (override in
+`config('ethereum.compute_units')`). Set `ethereum.sync.track_outgoing=false` to detect deposits only
+and halve `getAssetTransfers` requests.
+
+### Real-time deposits (Address Activity webhooks)
+
+```dotenv
+ETHEREUM_ALCHEMY_NOTIFY_AUTH_TOKEN=your-notify-auth-token   # dashboard → Webhooks → AUTH TOKEN
+ETHEREUM_ALCHEMY_WEBHOOK_ENABLED=true
+ETHEREUM_ALCHEMY_WEBHOOK_URL=https://your-app.com/ethereum/alchemy/webhook
+ETHEREUM_ALCHEMY_AUTO_SUBSCRIBE=true
+```
+
+```bash
+php artisan ethereum:alchemy-setup --reconcile   # create the webhook + subscribe existing addresses
+php artisan ethereum:alchemy-reconcile           # sync watched-address list
+php artisan ethereum:confirm-deposits            # mature confirmations (webhooks fire once)
+```
+
+Alchemy pushes a signed notification on incoming/outgoing activity; the package verifies the HMAC
+signature and triggers a targeted `AddressSync`. Facade API: `Ethereum::ensureAlchemyWebhook()`,
+`subscribeAlchemyAddress()`, `unsubscribeAlchemyAddress()`, `reconcileAlchemyWebhook()`.
+
 ## Support
 
 - Telegram: [@biodynamist](https://t.me/biodynamist)

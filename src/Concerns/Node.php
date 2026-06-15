@@ -5,9 +5,22 @@ namespace ItHealer\LaravelEthereum\Concerns;
 use ItHealer\LaravelEthereum\Enums\EthereumModel;
 use ItHealer\LaravelEthereum\Facades\Ethereum;
 use ItHealer\LaravelEthereum\Models\EthereumNode;
+use ItHealer\LaravelEthereum\Services\AlchemyUrlFactory;
 
 trait Node
 {
+    public function createAlchemyNode(string $apiKey, string $name, ?string $title = null, ?string $proxy = null): EthereumNode
+    {
+        $chainId = (int) config('ethereum.explorer.chain_id', 1);
+        $baseURL = AlchemyUrlFactory::make($chainId, $apiKey);
+
+        if (!$baseURL) {
+            throw new \InvalidArgumentException("Alchemy does not support chain id {$chainId}.");
+        }
+
+        return $this->createNode($name, $baseURL, $title, $proxy);
+    }
+
     public function createNode(string $name, string $baseURL, ?string $title = null, ?string $proxy = null): EthereumNode
     {
         /** @var class-string<EthereumNode> $nodeModel */

@@ -2,6 +2,19 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
+## v1.2.0 - 2026-06-15
+
+### Added
+
+- Alchemy support: driver-based explorer (`alchemy_getAssetTransfers`) selectable via
+  `ethereum_explorers.driver`, `Ethereum::createAlchemyNode()` / `createAlchemyExplorer()`.
+- Compute Unit (CU) metering on nodes/explorers (monthly reset) with least-credits selection;
+  `ethereum.compute_units` overrides; `ethereum.sync.track_outgoing` toggle.
+- Alchemy Notify (Address Activity webhooks): receiver route, signature verification, targeted
+  sync job, optional auto-subscribe, and commands `ethereum:alchemy-setup`,
+  `ethereum:alchemy-reconcile`, `ethereum:confirm-deposits`. New `ethereum_alchemy_webhooks` table;
+  `driver`/`credits`/`credits_at` columns added to explorers/nodes.
+
 ## v1.1.0 - 2026-06-15
 
 ### Added

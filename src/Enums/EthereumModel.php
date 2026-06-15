@@ -11,4 +11,5 @@ enum EthereumModel: string
     case Address = 'address';
     case Transaction = 'transaction';
     case Deposit = 'deposit';
+    case AlchemyWebhook = 'alchemy_webhook';
 }

@@ -5,6 +5,7 @@ namespace ItHealer\LaravelEthereum\Services\Sync;
 use Illuminate\Support\Facades\Date;
 use ItHealer\LaravelEthereum\Models\EthereumExplorer;
 use ItHealer\LaravelEthereum\Models\EthereumNode;
+use ItHealer\LaravelEthereum\Services\Alchemy\ComputeUnits;
 use ItHealer\LaravelEthereum\Services\BaseSync;
 
 class ExplorerSync extends BaseSync
@@ -41,19 +42,20 @@ class ExplorerSync extends BaseSync
 
     protected function syncBlock(): self
     {
-        try {
-            $api = $this->explorer->api();
-            $api->getApiLimit();
-        }
-        catch(\Exception $e) {
+        $api = $this->explorer->api();
+
+        if (!$api->healthCheck()) {
             $this->explorer->update([
                 'worked' => false,
             ]);
 
-            throw $e;
+            throw new \RuntimeException('Explorer '.$this->explorer->name.' health check failed.');
         }
 
         $this->explorer->increment('requests');
+        $this->explorer->recordCredits(
+            $api->creditsPerRequest() > 0 ? ComputeUnits::cost('eth_blockNumber') : 0
+        );
         $this->explorer->update([
             'sync_at' => Date::now(),
             'worked' => true,

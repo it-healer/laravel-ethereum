@@ -4,6 +4,7 @@ namespace ItHealer\LaravelEthereum\Api\Node;
 
 use Brick\Math\BigDecimal;
 use Brick\Math\BigInteger;
+use Closure;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -16,11 +17,16 @@ class NodeApi
     protected string $baseURL;
     protected ?string $proxy;
     protected array $tokenDecimals = [];
+    protected ?Closure $onUsage;
 
-    public function __construct(string $baseURL, ?string $proxy = null)
+    /**
+     * @param  Closure(string $method): void|null  $onUsage  called once per RPC request with the method name
+     */
+    public function __construct(string $baseURL, ?string $proxy = null, ?Closure $onUsage = null)
     {
         $this->baseURL = $baseURL;
         $this->proxy = $this->formatProxy($proxy);
+        $this->onUsage = $onUsage;
     }
 
     /**
@@ -72,6 +78,10 @@ class NodeApi
             'params' => $params,
             'id' => 1
         ]);
+
+        if ($this->onUsage) {
+            ($this->onUsage)($method);
+        }
 
         $result = $response->json();
 

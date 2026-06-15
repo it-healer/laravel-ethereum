@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TokenTransactionDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TransactionDTO;
-use ItHealer\LaravelEthereum\Api\Explorer\ExplorerApi;
+use ItHealer\LaravelEthereum\Api\Explorer\ExplorerApiInterface;
 use ItHealer\LaravelEthereum\Api\Node\NodeApi;
 use ItHealer\LaravelEthereum\Enums\EthereumModel;
 use ItHealer\LaravelEthereum\Enums\TransactionType;
@@ -29,7 +29,7 @@ class AddressSync extends BaseSync
     protected EthereumNode $node;
     protected NodeApi $nodeApi;
     protected EthereumExplorer $explorer;
-    protected ExplorerApi $explorerApi;
+    protected ExplorerApiInterface $explorerApi;
     /** @var array<string, EthereumToken> */
     protected array $tokens;
     protected bool $force;
@@ -156,13 +156,26 @@ class AddressSync extends BaseSync
         return $this;
     }
 
+    /**
+     * Counts an explorer request and the Compute Units it costs.
+     */
+    protected function explorerOnRequest(): \Closure
+    {
+        $credits = $this->explorerApi->creditsPerRequest();
+
+        return function () use ($credits): void {
+            $this->explorer->increment('requests');
+            $this->explorer->recordCredits($credits);
+        };
+    }
+
     protected function transactions(): static
     {
         $paginator = $this->explorerApi->getTransactionsPaginator(
             address: $this->address->address,
             startBlock: $this->address->sync_block_number ?? 0,
             perPage: 100,
-            callback: fn() => $this->explorer->increment('requests')
+            callback: $this->explorerOnRequest()
         );
 
         /** @var TransactionDTO $item */
@@ -181,7 +194,7 @@ class AddressSync extends BaseSync
             contract: null,
             startBlock: $this->address->sync_block_number ?? 0,
             perPage: 100,
-            callback: fn() => $this->explorer->increment('requests')
+            callback: $this->explorerOnRequest()
         );
 
         /** @var TokenTransactionDTO $item */

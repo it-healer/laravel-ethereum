@@ -5,9 +5,13 @@ namespace ItHealer\LaravelEthereum\Models;
 use Brick\Math\BigDecimal;
 use Illuminate\Database\Eloquent\Model;
 use ItHealer\LaravelEthereum\Api\Node\NodeApi;
+use ItHealer\LaravelEthereum\Models\Concerns\TracksComputeUnits;
+use ItHealer\LaravelEthereum\Services\Alchemy\ComputeUnits;
 
 class EthereumNode extends Model
 {
+    use TracksComputeUnits;
+
     protected ?NodeApi $_api = null;
     public $timestamps = false;
 
@@ -20,6 +24,8 @@ class EthereumNode extends Model
         'sync_data',
         'requests',
         'requests_at',
+        'credits',
+        'credits_at',
         'worked',
         'available',
     ];
@@ -30,6 +36,8 @@ class EthereumNode extends Model
             'sync_at' => 'datetime',
             'sync_data' => 'array',
             'requests_at' => 'date',
+            'credits' => 'integer',
+            'credits_at' => 'datetime',
             'worked' => 'boolean',
             'available' => 'boolean',
         ];
@@ -38,7 +46,11 @@ class EthereumNode extends Model
     public function api(): NodeApi
     {
         if( !$this->_api ) {
-            $this->_api = new NodeApi($this->base_url, $this->proxy);
+            $this->_api = new NodeApi(
+                $this->base_url,
+                $this->proxy,
+                fn (string $method) => $this->recordCredits(ComputeUnits::cost($method)),
+            );
         }
 
         return $this->_api;

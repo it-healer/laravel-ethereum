@@ -4,6 +4,7 @@ namespace ItHealer\LaravelEthereum;
 
 use Illuminate\Database\Eloquent\Model;
 use ItHealer\LaravelEthereum\Concerns\Address;
+use ItHealer\LaravelEthereum\Concerns\Alchemy;
 use ItHealer\LaravelEthereum\Concerns\Explorer;
 use ItHealer\LaravelEthereum\Concerns\Mnemonic;
 use ItHealer\LaravelEthereum\Concerns\Node;
@@ -16,7 +17,7 @@ use ItHealer\LaravelEthereum\Models\EthereumNode;
 
 class Ethereum
 {
-    use Node, Explorer, Token, Mnemonic, Address, Wallet, Transfer;
+    use Node, Explorer, Token, Mnemonic, Address, Wallet, Transfer, Alchemy;
 
     /** Standard BIP-44 path used by MetaMask, Trust Wallet and most software wallets. */
     public const PATH_BIP44 = "m/44'/60'/0'/0/{index}";
@@ -41,6 +42,7 @@ class Ethereum
         return $this->getModel(EthereumModel::Node)::query()
             ->where('worked', '=', true)
             ->where('available', '=', true)
+            ->orderByCredits()
             ->orderBy('requests')
             ->firstOrFail();
     }
@@ -50,6 +52,7 @@ class Ethereum
         return $this->getModel(EthereumModel::Explorer)::query()
             ->where('worked', '=', true)
             ->where('available', '=', true)
+            ->orderByCredits()
             ->orderBy('requests')
             ->firstOrFail();
     }

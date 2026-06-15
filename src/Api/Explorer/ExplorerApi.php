@@ -11,7 +11,7 @@ use ItHealer\LaravelEthereum\Api\Explorer\DTO\GasOracleDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TokenTransactionDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TransactionDTO;
 
-class ExplorerApi
+class ExplorerApi implements ExplorerApiInterface
 {
     protected string $baseURL, $apiKey;
     protected ?string $proxy;
@@ -183,6 +183,22 @@ class ExplorerApi
             },
             perPage: $perPage
         );
+    }
+
+    public function healthCheck(): bool
+    {
+        try {
+            $this->getApiLimit();
+
+            return true;
+        } catch (\Exception) {
+            return false;
+        }
+    }
+
+    public function creditsPerRequest(): int
+    {
+        return 0;
     }
 
     public function getApiLimit(): ApiLimitDTO
