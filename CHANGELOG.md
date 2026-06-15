@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
+## v1.1.0 - 2026-06-15
+
+### Added
+
+- Adaptive (touch-based) synchronization. `ethereum.touch` now supports `fast_interval` (max sync
+  frequency while an address is active) and `slow_interval` (while idle; `null` = skip idle
+  addresses). `waiting_seconds` is the active window after the last `touch_at`. Addresses are
+  polled often while in use and rarely while idle. Defaults preserve the previous behavior.
+
 ## v1.0.8 - 2026-06-11
 
 ### Added
