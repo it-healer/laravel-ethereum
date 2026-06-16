@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use ItHealer\LaravelEthereum\Api\Node\NodeApi;
 use ItHealer\LaravelEthereum\Models\Concerns\TracksComputeUnits;
 use ItHealer\LaravelEthereum\Services\Alchemy\ComputeUnits;
+use ItHealer\LaravelEthereum\Services\Infura\InfuraCredits;
 
 class EthereumNode extends Model
 {
@@ -49,11 +50,24 @@ class EthereumNode extends Model
             $this->_api = new NodeApi(
                 $this->base_url,
                 $this->proxy,
-                fn (string $method) => $this->recordCredits(ComputeUnits::cost($method)),
+                fn (string $method) => $this->recordCredits($this->creditCost($method)),
             );
         }
 
         return $this->_api;
+    }
+
+    /**
+     * Credit cost of an RPC method for this node's provider (Infura credits, Alchemy CU, or 0
+     * for unmetered nodes such as self-hosted).
+     */
+    public function creditCost(string $method): int
+    {
+        return match ($this->creditProvider()) {
+            'infura' => InfuraCredits::cost($method),
+            'alchemy' => ComputeUnits::cost($method),
+            default => 0,
+        };
     }
 
     public function getLatestBlockNumber(): int

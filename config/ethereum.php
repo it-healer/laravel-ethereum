@@ -76,6 +76,13 @@ return [
     'compute_units' => [],
 
     /*
+     * Infura credit cost overrides per RPC method (meters node credits, reset daily,
+     * least-used picked). Defaults mirror Infura's credit pricing — see
+     * \ItHealer\LaravelEthereum\Services\Infura\InfuraCredits.
+     */
+    'infura_credits' => [],
+
+    /*
      * Alchemy Notify (Address Activity webhooks). See README for setup.
      */
     'alchemy' => [
