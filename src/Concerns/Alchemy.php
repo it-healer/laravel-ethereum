@@ -15,9 +15,22 @@ use ItHealer\LaravelEthereum\Services\AlchemyUrlFactory;
  */
 trait Alchemy
 {
-    public function alchemyNotify(): AlchemyNotifyClient
+    /**
+     * Notify client for a specific account token, or the configured default when null.
+     * The webhook stores the token of the account it was created on, so operations always
+     * target the right Alchemy account even when several accounts are configured.
+     */
+    public function alchemyNotify(?string $authToken = null): AlchemyNotifyClient
     {
-        return app(AlchemyNotifyClient::class);
+        if ($authToken === null || $authToken === '') {
+            return app(AlchemyNotifyClient::class);
+        }
+
+        return new AlchemyNotifyClient(
+            authToken: $authToken,
+            apiUrl: (string) config('ethereum.alchemy.api_url', 'https://dashboard.alchemy.com/api'),
+            proxy: config('ethereum.proxy'),
+        );
     }
 
     public function findAlchemyWebhook(): ?EthereumAlchemyWebhook
@@ -28,7 +41,7 @@ trait Alchemy
         return $model::query()->first();
     }
 
-    public function ensureAlchemyWebhook(): EthereumAlchemyWebhook
+    public function ensureAlchemyWebhook(?string $authToken = null, ?string $accountRef = null): EthereumAlchemyWebhook
     {
         if ($webhook = $this->findAlchemyWebhook()) {
             return $webhook;
@@ -41,7 +54,7 @@ trait Alchemy
             throw new \InvalidArgumentException("Alchemy Notify does not support chain id {$chainId}.");
         }
 
-        $result = $this->alchemyNotify()->createWebhook($alchemyNetwork, $this->alchemyWebhookUrl());
+        $result = $this->alchemyNotify($authToken)->createWebhook($alchemyNetwork, $this->alchemyWebhookUrl());
 
         /** @var class-string<EthereumAlchemyWebhook> $model */
         $model = $this->getModel(EthereumModel::AlchemyWebhook);
@@ -49,17 +62,28 @@ trait Alchemy
         return $model::create([
             'webhook_id' => $result['id'],
             'signing_key' => $result['signing_key'],
+            'auth_token' => $authToken,
+            'account_ref' => $accountRef,
             'addresses_count' => 0,
             'active' => true,
         ]);
     }
 
+    /**
+     * Add an address to the Alchemy webhook. No-op if no webhook exists yet (it is provisioned
+     * explicitly via ensureAlchemyWebhook with a chosen account).
+     */
     public function subscribeAlchemyAddress(EthereumAddress|string $address): void
     {
-        $webhook = $this->ensureAlchemyWebhook();
+        $webhook = $this->findAlchemyWebhook();
+
+        if (!$webhook) {
+            return;
+        }
+
         $value = $address instanceof EthereumAddress ? $address->address : $address;
 
-        $this->alchemyNotify()->updateAddresses($webhook->webhook_id, add: [$value]);
+        $this->alchemyNotify($webhook->auth_token)->updateAddresses($webhook->webhook_id, add: [$value]);
         $webhook->increment('addresses_count');
     }
 
@@ -73,7 +97,7 @@ trait Alchemy
 
         $value = $address instanceof EthereumAddress ? $address->address : $address;
 
-        $this->alchemyNotify()->updateAddresses($webhook->webhook_id, remove: [$value]);
+        $this->alchemyNotify($webhook->auth_token)->updateAddresses($webhook->webhook_id, remove: [$value]);
         $webhook->decrement('addresses_count');
     }
 
@@ -82,21 +106,22 @@ trait Alchemy
      *
      * @return array{added: list<string>, removed: list<string>}
      */
-    public function reconcileAlchemyWebhook(): array
+    public function reconcileAlchemyWebhook(?string $authToken = null, ?string $accountRef = null): array
     {
-        $webhook = $this->ensureAlchemyWebhook();
+        $webhook = $this->ensureAlchemyWebhook($authToken, $accountRef);
+        $notify = $this->alchemyNotify($webhook->auth_token);
 
         $local = $this->alchemyTrackedAddresses();
         $localLower = $local->map(fn (string $a) => Str::lower($a));
 
-        $remote = collect($this->alchemyNotify()->getAddresses($webhook->webhook_id));
+        $remote = collect($notify->getAddresses($webhook->webhook_id));
         $remoteLower = $remote->map(fn (string $a) => Str::lower($a));
 
         $add = $local->filter(fn (string $a) => !$remoteLower->contains(Str::lower($a)))->values();
         $remove = $remote->filter(fn (string $a) => !$localLower->contains(Str::lower($a)))->values();
 
         if ($add->isNotEmpty() || $remove->isNotEmpty()) {
-            $this->alchemyNotify()->updateAddresses($webhook->webhook_id, $add->all(), $remove->all());
+            $notify->updateAddresses($webhook->webhook_id, $add->all(), $remove->all());
         }
 
         $webhook->update(['addresses_count' => $local->count()]);
