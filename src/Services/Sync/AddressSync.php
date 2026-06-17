@@ -85,7 +85,49 @@ class AddressSync extends BaseSync
             ->balance()
             ->tokenBalances()
             ->transactions()
+            ->reconcilePending()
             ->runWebhooks();
+    }
+
+    /**
+     * Resolve broadcast-but-still-pending outgoing transfers so a stuck/replaced
+     * transaction stops being subtracted from the available balance forever.
+     * A pending transfer whose nonce is below the confirmed account nonce was either
+     * mined (we stamp its block_number) or replaced/dropped (we mark it dropped_at).
+     */
+    protected function reconcilePending(): static
+    {
+        $pending = EthereumTransaction::query()
+            ->pendingOutgoing()
+            ->where('address', $this->address->address)
+            ->get();
+
+        if ($pending->isEmpty()) {
+            return $this;
+        }
+
+        $confirmedNonce = $this->nodeApi->getConfirmedNonce($this->address->address);
+
+        $ttlMinutes = config('ethereum.pending.ttl_minutes');
+        $ttlThreshold = $ttlMinutes !== null ? Date::now()->copy()->subMinutes((int) $ttlMinutes) : null;
+
+        foreach ($pending as $transaction) {
+            if ($transaction->nonce !== null && $transaction->nonce < $confirmedNonce) {
+                $blockNumber = $this->nodeApi->getTransactionBlockNumber($transaction->txid);
+
+                $transaction->update($blockNumber !== null
+                    ? ['block_number' => $blockNumber]
+                    : ['dropped_at' => Date::now()]);
+
+                continue;
+            }
+
+            if ($ttlThreshold !== null && $transaction->time_at && $transaction->time_at < $ttlThreshold) {
+                $transaction->update(['dropped_at' => Date::now()]);
+            }
+        }
+
+        return $this;
     }
 
     /**

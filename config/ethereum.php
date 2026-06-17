@@ -63,6 +63,18 @@ return [
     ],
 
     /*
+     * Broadcast-but-unconfirmed outgoing transfers are subtracted from the confirmed
+     * balance to show a truthful "available" balance. They leave the pending set once
+     * mined or reconciled by nonce during sync. `ttl_minutes` is a last-resort safety net
+     * (null relies solely on nonce reconciliation).
+     */
+    'pending' => [
+        'ttl_minutes' => env('ETHEREUM_PENDING_TTL_MINUTES') !== null
+            ? (int) env('ETHEREUM_PENDING_TTL_MINUTES')
+            : null,
+    ],
+
+    /*
      * Confirmations target used by ethereum:confirm-deposits to decide which deposits
      * still need a top-up sync (relevant when deposits arrive via Alchemy webhooks).
      */

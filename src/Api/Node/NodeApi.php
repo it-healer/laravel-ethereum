@@ -43,12 +43,14 @@ class NodeApi
      *
      * @param  callable(int $nonce): string  $buildRawTransaction  возвращает подписанную raw-транзакцию ('0x...')
      */
-    protected function sendWithSafeNonce(string $from, callable $buildRawTransaction): string
+    protected function sendWithSafeNonce(string $from, callable $buildRawTransaction, ?int &$usedNonce = null): string
     {
         $from = Str::lower($from);
         $lock = Cache::lock('ethereum:transfer-lock:'.$from, 60);
 
-        return $lock->block(60, function () use ($from, $buildRawTransaction): string {
+        $nonce = null;
+
+        $txid = $lock->block(60, function () use ($from, $buildRawTransaction, &$nonce): string {
             $chainNonce = hexdec(substr($this->rpc('eth_getTransactionCount', [$from, 'pending']), 2));
             $localNonce = (int) Cache::get('ethereum:next-nonce:'.$from, 0);
             $nonce = max($chainNonce, $localNonce);
@@ -60,6 +62,10 @@ class NodeApi
 
             return $txid;
         });
+
+        $usedNonce = $nonce;
+
+        return $txid;
     }
 
     public function rpc(string $method, array $params = []): mixed
@@ -195,6 +201,29 @@ class NodeApi
         return (int)hexdec($hex);
     }
 
+    /**
+     * Number of confirmed (mined) transactions sent from the address. A pending
+     * transfer whose nonce is below this has been mined or replaced.
+     */
+    public function getConfirmedNonce(string $address): int
+    {
+        return (int)hexdec(substr($this->rpc('eth_getTransactionCount', [Str::lower($address), 'latest']), 2));
+    }
+
+    /**
+     * Block number of a mined transaction, or null when it is not (yet) mined.
+     */
+    public function getTransactionBlockNumber(string $txid): ?int
+    {
+        $receipt = $this->rpc('eth_getTransactionReceipt', [$txid]);
+
+        if (! is_array($receipt) || ! isset($receipt['blockNumber'])) {
+            return null;
+        }
+
+        return (int)hexdec($receipt['blockNumber']);
+    }
+
     public static function hexToBigDecimal(string $hex): BigDecimal
     {
         $value = ltrim($hex, '0x');
@@ -305,11 +334,12 @@ class NodeApi
             );
 
             return '0x'.$tx->getRaw($privateKey, 1);
-        });
+        }, $nonce);
 
         return TransferDTO::make([
             ...$preview->toArray(),
             'txid' => $txid,
+            'nonce' => $nonce,
         ]);
     }
 
@@ -424,11 +454,12 @@ class NodeApi
             );
 
             return '0x'.$tx->getRaw($privateKey, 1);
-        });
+        }, $nonce);
 
         return TransferDTO::make([
             ...$preview->toArray(),
             'txid' => $txid,
+            'nonce' => $nonce,
         ]);
     }
 

@@ -2,6 +2,7 @@
 
 namespace ItHealer\LaravelEthereum\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -24,8 +25,11 @@ class EthereumTransaction extends Model
         'from',
         'to',
         'amount',
+        'fee',
         'token_address',
         'block_number',
+        'nonce',
+        'dropped_at',
         'data',
     ];
 
@@ -39,9 +43,24 @@ class EthereumTransaction extends Model
             'type' => TransactionType::class,
             'time_at' => 'datetime',
             'amount' => BigDecimalCast::class,
+            'fee' => BigDecimalCast::class,
             'block_number' => 'integer',
+            'nonce' => 'integer',
+            'dropped_at' => 'datetime',
             'data' => 'array',
         ];
+    }
+
+    /**
+     * Outgoing transfers broadcast but not yet mined (no block_number) and not
+     * reconciled as dropped — their amount and fee are still in flight.
+     */
+    public function scopePendingOutgoing(Builder $query): Builder
+    {
+        return $query
+            ->where('type', TransactionType::OUTGOING)
+            ->whereNull('block_number')
+            ->whereNull('dropped_at');
     }
 
     public function addresses(): HasMany
