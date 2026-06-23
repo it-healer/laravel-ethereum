@@ -124,10 +124,10 @@ class AddressSync extends BaseSync
 
         foreach ($pending as $transaction) {
             if ($transaction->nonce !== null && $transaction->nonce < $confirmedNonce) {
-                $blockNumber = $this->nodeApi->getTransactionBlockNumber($transaction->txid);
+                $receipt = $this->nodeApi->getTransactionReceipt($transaction->txid);
 
-                $transaction->update($blockNumber !== null
-                    ? ['block_number' => $blockNumber]
+                $transaction->update($receipt !== null
+                    ? ['block_number' => $receipt['blockNumber'], 'failed' => $receipt['failed']]
                     : ['dropped_at' => $now]);
 
                 continue;
@@ -137,7 +137,11 @@ class AddressSync extends BaseSync
                 $known = $this->nodeApi->getTransactionByHash($transaction->txid);
 
                 if ($known !== null && $known['blockNumber'] !== null) {
-                    $transaction->update(['block_number' => $known['blockNumber']]);
+                    $receipt = $this->nodeApi->getTransactionReceipt($transaction->txid);
+                    $transaction->update([
+                        'block_number' => $known['blockNumber'],
+                        'failed' => $receipt['failed'] ?? false,
+                    ]);
 
                     continue;
                 }

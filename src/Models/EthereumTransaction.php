@@ -30,6 +30,7 @@ class EthereumTransaction extends Model
         'block_number',
         'nonce',
         'dropped_at',
+        'failed',
         'data',
     ];
 
@@ -47,6 +48,7 @@ class EthereumTransaction extends Model
             'block_number' => 'integer',
             'nonce' => 'integer',
             'dropped_at' => 'datetime',
+            'failed' => 'boolean',
             'data' => 'array',
         ];
     }
