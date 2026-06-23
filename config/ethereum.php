@@ -65,13 +65,19 @@ return [
     /*
      * Broadcast-but-unconfirmed outgoing transfers are subtracted from the confirmed
      * balance to show a truthful "available" balance. They leave the pending set once
-     * mined or reconciled by nonce during sync. `ttl_minutes` is a last-resort safety net
-     * (null relies solely on nonce reconciliation).
+     * mined or reconciled during sync: a transfer whose nonce is already confirmed was
+     * mined or replaced, while a still-next transfer the node no longer knows
+     * (eth_getTransactionByHash returns null) was evicted from the mempool. The node is
+     * asked only after `dropped_grace_seconds` so a freshly broadcast transfer the node
+     * has not yet registered is not dropped prematurely. `ttl_minutes` is a last-resort
+     * safety net (null relies solely on node reconciliation).
      */
     'pending' => [
         'ttl_minutes' => env('ETHEREUM_PENDING_TTL_MINUTES') !== null
             ? (int) env('ETHEREUM_PENDING_TTL_MINUTES')
             : null,
+
+        'dropped_grace_seconds' => (int) env('ETHEREUM_PENDING_DROPPED_GRACE_SECONDS', 60),
     ],
 
     /*

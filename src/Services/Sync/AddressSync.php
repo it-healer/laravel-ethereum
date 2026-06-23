@@ -77,7 +77,8 @@ class AddressSync extends BaseSync
         }
 
         if ($this->touchEnabled && !$this->force && $this->shouldSkipBySchedule()) {
-            $this->log('No synchronization required by the adaptive touch schedule.', 'success');
+            $this->log('No full synchronization by the adaptive touch schedule; reconciling pending only.', 'success');
+            $this->reconcilePending();
             return;
         }
 
@@ -90,10 +91,15 @@ class AddressSync extends BaseSync
     }
 
     /**
-     * Resolve broadcast-but-still-pending outgoing transfers so a stuck/replaced
+     * Resolve broadcast-but-still-pending outgoing transfers so a stuck/replaced/dropped
      * transaction stops being subtracted from the available balance forever.
-     * A pending transfer whose nonce is below the confirmed account nonce was either
-     * mined (we stamp its block_number) or replaced/dropped (we mark it dropped_at).
+     *
+     *  - nonce already below the confirmed account nonce: the slot was settled, so the
+     *    transfer was mined (stamp block_number) or replaced/dropped (mark dropped_at).
+     *  - nonce still next (>= confirmed): ask the node whether it still knows the txid —
+     *    a mined block stamps it, an unknown txid (after a short grace) means it was
+     *    evicted from the mempool and is dropped, otherwise it is genuinely stuck and kept.
+     *  - `ttl_minutes` remains a last-resort fallback.
      */
     protected function reconcilePending(): static
     {
@@ -108,8 +114,13 @@ class AddressSync extends BaseSync
 
         $confirmedNonce = $this->nodeApi->getConfirmedNonce($this->address->address);
 
+        $now = Date::now();
+
         $ttlMinutes = config('ethereum.pending.ttl_minutes');
-        $ttlThreshold = $ttlMinutes !== null ? Date::now()->copy()->subMinutes((int) $ttlMinutes) : null;
+        $ttlThreshold = $ttlMinutes !== null ? $now->copy()->subMinutes((int) $ttlMinutes) : null;
+
+        $dropGraceSeconds = (int) config('ethereum.pending.dropped_grace_seconds', 60);
+        $dropGraceThreshold = $now->copy()->subSeconds($dropGraceSeconds);
 
         foreach ($pending as $transaction) {
             if ($transaction->nonce !== null && $transaction->nonce < $confirmedNonce) {
@@ -117,13 +128,30 @@ class AddressSync extends BaseSync
 
                 $transaction->update($blockNumber !== null
                     ? ['block_number' => $blockNumber]
-                    : ['dropped_at' => Date::now()]);
+                    : ['dropped_at' => $now]);
 
                 continue;
             }
 
+            if ($transaction->nonce !== null) {
+                $known = $this->nodeApi->getTransactionByHash($transaction->txid);
+
+                if ($known !== null && $known['blockNumber'] !== null) {
+                    $transaction->update(['block_number' => $known['blockNumber']]);
+
+                    continue;
+                }
+
+                if ($known === null
+                    && (! $transaction->time_at || $transaction->time_at < $dropGraceThreshold)) {
+                    $transaction->update(['dropped_at' => $now]);
+
+                    continue;
+                }
+            }
+
             if ($ttlThreshold !== null && $transaction->time_at && $transaction->time_at < $ttlThreshold) {
-                $transaction->update(['dropped_at' => Date::now()]);
+                $transaction->update(['dropped_at' => $now]);
             }
         }
 
