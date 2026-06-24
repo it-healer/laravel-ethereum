@@ -77,7 +77,7 @@ class EthereumWallet extends Model
     {
         return new Attribute(
             get: function (): string {
-                $addresses = $this->addresses()->pluck('address')->all();
+                $addresses = $this->addresses()->where('available', true)->pluck('address')->all();
                 $pending = \ItHealer\LaravelEthereum\Services\PendingBalance::forAddresses($addresses);
 
                 $native = \Brick\Math\BigDecimal::zero();
@@ -104,7 +104,7 @@ class EthereumWallet extends Model
 
         return new Attribute(
             get: function () use ($tokenModel) {
-                $addresses = $this->addresses()->pluck('address')->all();
+                $addresses = $this->addresses()->where('available', true)->pluck('address')->all();
                 $pending = \ItHealer\LaravelEthereum\Services\PendingBalance::forAddresses($addresses);
 
                 $tokenPending = [];
