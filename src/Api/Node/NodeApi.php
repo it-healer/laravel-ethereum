@@ -4,6 +4,7 @@ namespace ItHealer\LaravelEthereum\Api\Node;
 
 use Brick\Math\BigDecimal;
 use Brick\Math\BigInteger;
+use Brick\Math\RoundingMode;
 use Closure;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -374,6 +375,116 @@ class NodeApi
                 to: $preview->to(),
                 value: '0x'.static::bigDecimalToHex($amount->multipliedBy(pow(10, 18))),
                 data: ''
+            );
+
+            return '0x'.$tx->getRaw($privateKey, 1);
+        }, $nonce);
+
+        return TransferDTO::make([
+            ...$preview->toArray(),
+            'txid' => $txid,
+            'nonce' => $nonce,
+        ]);
+    }
+
+    /**
+     * Preview of an arbitrary transaction: native value plus call data, as requested by a dApp
+     * (WalletConnect eth_sendTransaction). Without $gasLimit the node estimate is padded by
+     * `ethereum.call_gas_buffer` (default 20%). A call the node says would revert comes back
+     * with `error` instead of throwing.
+     */
+    public function previewCall(
+        string $from,
+        string $to,
+        BigDecimal $valueWei,
+        string $data = '',
+        ?int $gasLimit = null,
+        ?BigDecimal $balanceBefore = null,
+    ): PreviewTransferDTO {
+        $from = Str::lower($from);
+        $to = Str::lower($to);
+        $data = $data === '' || $data === '0x' ? '' : '0x'.Str::lower(preg_replace('/^0x/i', '', $data));
+        $valueWei = $valueWei->toScale(0);
+        $amount = $valueWei->withPointMovedLeft(18);
+
+        if ($balanceBefore === null) {
+            $balanceBefore = $this->getBalance($from);
+        }
+
+        $gasPrice = $this->gasPrice();
+        $error = null;
+
+        try {
+            if ($gasLimit) {
+                $gas = BigDecimal::of($gasLimit);
+            } else {
+                $params = ['from' => $from, 'to' => $to];
+                if ($data !== '') {
+                    $params['data'] = $data;
+                }
+                if (! $valueWei->isZero()) {
+                    $params['value'] = '0x'.ltrim(static::bigDecimalToHex($valueWei), '0');
+                }
+
+                $gas = static::hexToBigDecimal($this->rpc('eth_estimateGas', [$params]))
+                    ->multipliedBy((string) config('ethereum.call_gas_buffer', '1.2'))
+                    ->toScale(0, RoundingMode::Up);
+            }
+        } catch (\Exception $e) {
+            $gas = BigDecimal::zero();
+            $error = 'Transaction would fail: '.$e->getMessage();
+        }
+
+        $fee = $gasPrice->multipliedBy($gas)->dividedBy(pow(10, 18), 18);
+        $balanceAfter = $balanceBefore->minus($fee)->minus($amount);
+
+        if ($error === null && $balanceAfter->isNegative()) {
+            $error = 'Недостаточно баланса ETH';
+        }
+
+        return PreviewTransferDTO::make([
+            'from' => $from,
+            'to' => $to,
+            'amount' => $amount->__toString(),
+            'data' => $data,
+            'gas_price' => $gasPrice->__toString(),
+            'gas_limit' => $gas->__toString(),
+            'fee' => $fee->__toString(),
+            'balance_before' => $balanceBefore->__toString(),
+            'balance_after' => $balanceAfter->__toString(),
+            'error' => $error,
+        ]);
+    }
+
+    /**
+     * Sign and broadcast an arbitrary transaction (see previewCall()).
+     */
+    public function sendCall(
+        string $from,
+        string $to,
+        string $privateKey,
+        BigDecimal $valueWei,
+        string $data = '',
+        ?int $gasLimit = null,
+        ?BigDecimal $balanceBefore = null,
+    ): TransferDTO {
+        $preview = $this->previewCall($from, $to, $valueWei, $data, $gasLimit, $balanceBefore);
+        if ($preview->hasError()) {
+            throw new \Exception($preview->error());
+        }
+
+        $gasPriceHex = $preview->gasPrice()->toBigInteger()->toBase(16);
+        $gasLimitHex = $preview->gasLimit()->toBigInteger()->toBase(16);
+        $valueHex = $valueWei->isZero() ? '' : '0x'.static::bigDecimalToHex($valueWei->toScale(0));
+
+        $txid = $this->sendWithSafeNonce($preview->from(), function (int $nonce) use ($preview, $gasPriceHex, $gasLimitHex, $valueHex, $privateKey): string {
+            $tx = new Transaction(
+                nonce: dechex($nonce),
+                gasPrice: $gasPriceHex,
+                gasLimit: $gasLimitHex,
+                to: $preview->to(),
+                value: $valueHex,
+                data: $preview->data()
             );
 
             return '0x'.$tx->getRaw($privateKey, 1);

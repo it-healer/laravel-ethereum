@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
+## v1.8.0 - 2026-10-15
+
+### Added
+
+- `Ethereum::previewCall()` / `Ethereum::sendCall()` (and `NodeApi::previewCall()` / `sendCall()`) —
+  arbitrary transactions with native value and call data through the nonce-safe send path.
+  Without a gas limit the estimate is padded by `ethereum.call_gas_buffer` (default 1.2); a call
+  that would revert returns a preview with `error` instead of throwing.
+
 ## v1.2.0 - 2026-06-15
 
 ### Added

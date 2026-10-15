@@ -63,6 +63,56 @@ trait Transfer
         );
     }
 
+    /**
+     * Preview of an arbitrary transaction (value + call data) from a wallet address,
+     * e.g. one requested by a dApp over WalletConnect.
+     */
+    public function previewCall(
+        EthereumAddress $from,
+        string $to,
+        BigDecimal|int|string $valueWei,
+        string $data = '',
+        ?int $gasLimit = null,
+        ?BigDecimal $balanceBefore = null,
+    ): PreviewTransferDTO {
+        $node = $from->wallet->node ?? Ethereum::getNode();
+        $node->increment('requests', 2 + ($balanceBefore === null ? 1 : 0));
+
+        return $node->api()->previewCall(
+            from: $from->address,
+            to: $to,
+            valueWei: BigDecimal::of($valueWei),
+            data: $data,
+            gasLimit: $gasLimit,
+            balanceBefore: $balanceBefore,
+        );
+    }
+
+    /**
+     * Sign and broadcast an arbitrary transaction (see previewCall()).
+     */
+    public function sendCall(
+        EthereumAddress $from,
+        string $to,
+        BigDecimal|int|string $valueWei,
+        string $data = '',
+        ?int $gasLimit = null,
+        ?BigDecimal $balanceBefore = null,
+    ): TransferDTO {
+        $node = $from->wallet->node ?? Ethereum::getNode();
+        $node->increment('requests', 4 + ($balanceBefore === null ? 1 : 0));
+
+        return $node->api()->sendCall(
+            from: $from->address,
+            to: $to,
+            privateKey: $from->private_key,
+            valueWei: BigDecimal::of($valueWei),
+            data: $data,
+            gasLimit: $gasLimit,
+            balanceBefore: $balanceBefore,
+        );
+    }
+
     public function previewTokenTransfer(
         EthereumToken|string $contract,
         EthereumAddress $from,

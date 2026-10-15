@@ -84,6 +84,12 @@ return [
      * Confirmations target used by ethereum:confirm-deposits to decide which deposits
      * still need a top-up sync (relevant when deposits arrive via Alchemy webhooks).
      */
+    /*
+     * Gas estimate multiplier for arbitrary contract calls (previewCall / sendCall)
+     * sent without an explicit gas limit, e.g. dApp requests over WalletConnect.
+     */
+    'call_gas_buffer' => '1.2',
+
     'confirmations_target' => (int) env('ETHEREUM_CONFIRMATIONS_TARGET', 12),
 
     /*

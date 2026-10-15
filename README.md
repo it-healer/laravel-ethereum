@@ -119,6 +119,19 @@ $wallet = Ethereum::createWallet('Custom', derivationPath: "m/44'/60'/1'/0/{inde
 
 The default template can be changed via `config('ethereum.wallet.default_derivation_path')`.
 
+## Arbitrary transactions
+
+Native value plus call data, e.g. requested by a dApp over WalletConnect `eth_sendTransaction`.
+Without a gas limit the node estimate is padded by `ethereum.call_gas_buffer` (default `1.2`);
+a call the node says would revert comes back with `error()` instead of throwing:
+
+```php
+use \ItHealer\LaravelEthereum\Facades\Ethereum;
+
+$preview = Ethereum::previewCall($fromAddress, '0xContract', valueWei: '0', data: '0x095ea7b3...');
+$result = Ethereum::sendCall($fromAddress, '0xContract', valueWei: '0', data: '0x095ea7b3...');
+```
+
 ## Adaptive synchronization (touch)
 
 Enable adaptive sync (`ethereum.touch`) so addresses are polled **often while in use and rarely
