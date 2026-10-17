@@ -132,6 +132,16 @@ $preview = Ethereum::previewCall($fromAddress, '0xContract', valueWei: '0', data
 $result = Ethereum::sendCall($fromAddress, '0xContract', valueWei: '0', data: '0x095ea7b3...');
 ```
 
+## Gas price
+
+Outgoing transactions are legacy (type 0). A bare `eth_gasPrice` is the current base fee plus an
+almost zero tip, so once the base fee rises (up to 12.5% per block) such a transaction falls below
+it and waits in the mempool for minutes. The package therefore prices gas as the next block's base
+fee times `ethereum.gas.base_fee_multiplier` (default `1.25`, two blocks of maximum growth) plus the
+median tip of the last 10 blocks (`eth_feeHistory`, at least `ethereum.gas.min_priority_fee_gwei`,
+default `0.01`), never below the node's own `eth_gasPrice`. Override with
+`ETHEREUM_GAS_BASE_FEE_MULTIPLIER` / `ETHEREUM_GAS_MIN_PRIORITY_FEE_GWEI`.
+
 ## Adaptive synchronization (touch)
 
 Enable adaptive sync (`ethereum.touch`) so addresses are polled **often while in use and rarely

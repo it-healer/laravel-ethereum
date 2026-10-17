@@ -90,6 +90,17 @@ return [
      */
     'call_gas_buffer' => '1.2',
 
+    /*
+     * Gas price of outgoing transactions (legacy): the next block's base fee times
+     * `base_fee_multiplier` plus the median tip of recent blocks, at least
+     * `min_priority_fee_gwei`. A bare eth_gasPrice has almost no tip and gets stuck for
+     * minutes as soon as the base fee rises.
+     */
+    'gas' => [
+        'base_fee_multiplier' => env('ETHEREUM_GAS_BASE_FEE_MULTIPLIER', '1.25'),
+        'min_priority_fee_gwei' => env('ETHEREUM_GAS_MIN_PRIORITY_FEE_GWEI', '0.01'),
+    ],
+
     'confirmations_target' => (int) env('ETHEREUM_CONFIRMATIONS_TARGET', 12),
 
     /*

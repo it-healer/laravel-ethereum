@@ -285,11 +285,60 @@ class NodeApi
         return $hex;
     }
 
+    /**
+     * Gas price (wei) for legacy transactions, with headroom so the transaction gets into the
+     * next blocks. A bare `eth_gasPrice` is the current base fee plus an almost zero tip: once
+     * the base fee rises (up to 12.5% per block) such a transaction is below it and waits in the
+     * mempool for minutes. Here: the next block's base fee times `ethereum.gas.base_fee_multiplier`
+     * (1.25 — two blocks of maximum growth) plus the median tip of recent blocks (at least
+     * `ethereum.gas.min_priority_fee_gwei`), never below the node's own price. A legacy
+     * transaction pays its full gas price, so the headroom is the price of fast inclusion.
+     * If the node does not support `eth_feeHistory`, its `eth_gasPrice` is used as is.
+     */
     public function gasPrice(): BigDecimal
     {
-        $value = $this->rpc('eth_gasPrice');
+        $nodePrice = static::hexToBigDecimal($this->rpc('eth_gasPrice'));
 
-        return static::hexToBigDecimal($value);
+        try {
+            $history = $this->rpc('eth_feeHistory', ['0xa', 'latest', [50]]);
+        } catch (\Throwable) {
+            return $nodePrice;
+        }
+
+        $baseFees = (array) ($history['baseFeePerGas'] ?? []);
+
+        if ($baseFees === []) {
+            return $nodePrice;
+        }
+
+        // The last element is the base fee of the next block
+        $nextBaseFee = static::hexToBigInteger((string) end($baseFees));
+
+        $tips = array_map(fn ($reward) => static::hexToBigInteger((string) ($reward[0] ?? '0x0')), (array) ($history['reward'] ?? []));
+        usort($tips, fn (BigInteger $a, BigInteger $b) => $a->compareTo($b));
+        $medianTip = $tips === [] ? BigInteger::zero() : $tips[intdiv(count($tips), 2)];
+
+        $minTip = BigDecimal::of((string) config('ethereum.gas.min_priority_fee_gwei', '0.01'))
+            ->multipliedBy(1_000_000_000)
+            ->toBigInteger();
+        $tip = $medianTip->isGreaterThan($minTip) ? $medianTip : $minTip;
+
+        $price = BigDecimal::of($nextBaseFee)
+            ->multipliedBy((string) config('ethereum.gas.base_fee_multiplier', '1.25'))
+            ->plus($tip)
+            ->toScale(0, RoundingMode::Up);
+
+        return $price->isGreaterThan($nodePrice) ? $price : $nodePrice;
+    }
+
+    /**
+     * Hex quantity (0x…) as an integer; `0x0` and `0x` are zero.
+     */
+    protected static function hexToBigInteger(string $hex): BigInteger
+    {
+        $value = ltrim(preg_replace('/^0x/i', '', $hex) ?? '', '0');
+
+        return $value === '' ? BigInteger::zero() : BigInteger::fromBase($value, 16);
     }
 
     public function gasEstimate(string $from, string $to, string $data): BigDecimal
