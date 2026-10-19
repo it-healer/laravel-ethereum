@@ -2,6 +2,16 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
+## v1.8.2 - 2026-10-19
+
+### Fixed
+
+- Node and explorer requests: 20 s to resolve the host and connect instead of Laravel's default 10 s
+  (`ethereum.http.connect_timeout`, env `ETHEREUM_HTTP_CONNECT_TIMEOUT`). A request that failed before reaching the
+  server — cURL 6, 7, or 28 while resolving or connecting — is repeated up to `ethereum.http.retries` times
+  (default 2, 500 ms apart). A timeout after the request was sent is never repeated. A repeated
+  `eth_sendRawTransaction` is the same signed transaction, so it cannot be sent twice.
+
 ## v1.8.0 - 2026-10-15
 
 ### Added

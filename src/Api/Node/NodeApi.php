@@ -73,6 +73,15 @@ class NodeApi
     {
         $client = Http::asJson()
             ->acceptJson()
+            ->connectTimeout((int)config('ethereum.http.connect_timeout', 20))
+            // A failure before the connection is made (DNS did not answer, host unreachable) means
+            // the node never got the request, so it is safe to repeat — sending a transaction too
+            ->retry(
+                max(1, 1 + (int)config('ethereum.http.retries', 2)),
+                (int)config('ethereum.http.retry_sleep_ms', 500),
+                fn (\Throwable $e) => self::failedBeforeConnecting($e),
+                false,
+            )
             ->withOptions([
                 'base_uri' => $this->baseURL,
                 'timeout' => 60,
@@ -101,6 +110,18 @@ class NodeApi
         }
 
         return $result['result'];
+    }
+
+    /**
+     * The request did not reach the node: cURL 6 (could not resolve host), 7 (could not connect)
+     * or 28 while resolving or connecting — matched at the start of the message only. A timeout
+     * after the request was sent is not one. Even a repeated raw transaction is the same signed
+     * transaction (same nonce and txid): a second copy is rejected as already known.
+     */
+    public static function failedBeforeConnecting(\Throwable $e): bool
+    {
+        return $e instanceof \Illuminate\Http\Client\ConnectionException
+            && preg_match('/^cURL error (6|7): |^cURL error 28: (Resolving|Connection) timed out /', $e->getMessage()) === 1;
     }
 
     protected function formatProxy(?string $proxy): ?string

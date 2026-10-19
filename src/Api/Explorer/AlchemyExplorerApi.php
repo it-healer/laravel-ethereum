@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use ItHealer\LaravelEthereum\Api\DTOPaginator;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TokenTransactionDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TransactionDTO;
+use ItHealer\LaravelEthereum\Api\Node\NodeApi;
 use ItHealer\LaravelEthereum\Services\Alchemy\ComputeUnits;
 use ItHealer\LaravelEthereum\Support\ProxyFormatter;
 
@@ -48,6 +49,15 @@ class AlchemyExplorerApi implements ExplorerApiInterface
     {
         $response = Http::asJson()
             ->acceptJson()
+            ->connectTimeout((int)config('ethereum.http.connect_timeout', 20))
+            // A failure before the connection is made (DNS did not answer, host unreachable) means
+            // the explorer never got the request, so it is safe to repeat
+            ->retry(
+                max(1, 1 + (int)config('ethereum.http.retries', 2)),
+                (int)config('ethereum.http.retry_sleep_ms', 500),
+                fn (\Throwable $e) => NodeApi::failedBeforeConnecting($e),
+                false,
+            )
             ->withOptions([
                 'base_uri' => $this->baseURL,
                 'timeout' => 60,

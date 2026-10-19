@@ -179,4 +179,14 @@ return [
         'deposit' => \ItHealer\LaravelEthereum\Models\EthereumDeposit::class,
         'alchemy_webhook' => \ItHealer\LaravelEthereum\Models\EthereumAlchemyWebhook::class,
     ],
+
+    /*
+     * HTTP to nodes and explorers: time to resolve and connect, and how many times a request is repeated
+     * when it failed before reaching the server (DNS did not answer, host unreachable) — safe to repeat.
+     */
+    'http' => [
+        'connect_timeout' => (int)env('ETHEREUM_HTTP_CONNECT_TIMEOUT', 20),
+        'retries' => (int)env('ETHEREUM_HTTP_RETRIES', 2),
+        'retry_sleep_ms' => 500,
+    ],
 ];
