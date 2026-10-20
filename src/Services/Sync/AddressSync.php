@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TokenTransactionDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TransactionDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\ExplorerApiInterface;
+use ItHealer\LaravelEthereum\Api\Explorer\InternalTransactionsInterface;
 use ItHealer\LaravelEthereum\Api\Node\NodeApi;
 use ItHealer\LaravelEthereum\Enums\EthereumModel;
 use ItHealer\LaravelEthereum\Enums\TransactionType;
@@ -236,18 +237,22 @@ class AddressSync extends BaseSync
     /**
      * Counts an explorer request and the Compute Units it costs.
      */
-    protected function explorerOnRequest(): \Closure
+    protected function explorerOnRequest(?EthereumExplorer $explorer = null, ?ExplorerApiInterface $api = null): \Closure
     {
-        $credits = $this->explorerApi->creditsPerRequest();
+        $explorer ??= $this->explorer;
+        $credits = ($api ?? $this->explorerApi)->creditsPerRequest();
 
-        return function () use ($credits): void {
-            $this->explorer->increment('requests');
-            $this->explorer->recordCredits($credits);
+        return function () use ($explorer, $credits): void {
+            $explorer->increment('requests');
+            $explorer->recordCredits($credits);
         };
     }
 
     protected function transactions(): static
     {
+        // Read first: a failed request leaves nothing half-written and the next sync retries
+        $internal = $this->fetchSeparateInternalTransactions($this->address->sync_block_number ?? 0);
+
         $paginator = $this->explorerApi->getTransactionsPaginator(
             address: $this->address->address,
             startBlock: $this->address->sync_block_number ?? 0,
@@ -258,9 +263,18 @@ class AddressSync extends BaseSync
         /** @var TransactionDTO $item */
         foreach ($paginator as $item) {
             $this->checkCancelled();
+
+            if ($item->isInternal()) {
+                $internal[] = $item;
+
+                continue;
+            }
+
             $this->handleTransaction($item);
             $this->reportProgress('transactions');
         }
+
+        $this->storeInternalTransactions($internal);
 
         $this->address->update([
             'sync_at' => Date::now(),
@@ -309,6 +323,7 @@ class AddressSync extends BaseSync
         EthereumTransaction::updateOrCreate([
             'txid' => $transaction->hash(),
             'address' => $this->address->address,
+            'internal' => false,
         ], [
             'type' => $type,
             'time_at' => $transaction->time(),
@@ -355,6 +370,7 @@ class AddressSync extends BaseSync
          EthereumTransaction::updateOrCreate([
             'txid' => $transaction->hash(),
             'address' => $this->address->address,
+            'internal' => false,
         ], [
             'type' => $type,
             'time_at' => $transaction->time(),
@@ -388,6 +404,192 @@ class AddressSync extends BaseSync
 
                 $this->webhooks[] = $deposit;
             }
+        }
+    }
+
+    /**
+     * Reads internal transfers once more from `$fromBlock` (those synced before they were
+     * supported) without moving the sync cursor. Deposits found here are history: the webhook
+     * handler is only called with `$webhooks`. Returns the number of stored transfers.
+     */
+    public function backfillInternalTransactions(int $fromBlock = 0, bool $webhooks = false): int
+    {
+        // Not a run(): start the clock of the log here
+        parent::run();
+
+        $source = $this->internalTransactionsSource();
+
+        if ($source === null) {
+            $this->log('No explorer returns internal transfers: add an Etherscan API V2 explorer to see them.', 'warn');
+
+            return 0;
+        }
+
+        [$explorer, $api] = $source;
+        $this->webhooks = [];
+        $items = [];
+
+        foreach ($api->getInternalTransactionsPaginator($this->address->address, $fromBlock, 100, $this->explorerOnRequest($explorer, $api)) as $item) {
+            $this->checkCancelled();
+            $items[] = $item;
+        }
+
+        $stored = $this->storeInternalTransactions($items);
+
+        if ($webhooks) {
+            $this->runWebhooks();
+        }
+
+        $this->webhooks = [];
+
+        return $stored;
+    }
+
+    /**
+     * Internal transfers when the explorer does not return them with the transactions: from
+     * the explorer itself (Etherscan txlistinternal) or from another explorer that knows them.
+     *
+     * @return array<TransactionDTO>
+     */
+    protected function fetchSeparateInternalTransactions(int $startBlock): array
+    {
+        if (!config('ethereum.sync.internal_transactions', true)) {
+            return [];
+        }
+
+        if ($this->explorerApi instanceof InternalTransactionsInterface && $this->explorerApi->combinesInternalTransactions()) {
+            return [];
+        }
+
+        $source = $this->internalTransactionsSource();
+
+        if ($source === null) {
+            $this->log('No explorer returns internal transfers: add an Etherscan API V2 explorer to see them.', 'warn');
+
+            return [];
+        }
+
+        [$explorer, $api] = $source;
+        $items = [];
+
+        foreach ($api->getInternalTransactionsPaginator($this->address->address, $startBlock, 100, $this->explorerOnRequest($explorer, $api)) as $item) {
+            $this->checkCancelled();
+            $items[] = $item;
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return array{0: EthereumExplorer, 1: ExplorerApiInterface&InternalTransactionsInterface}|null
+     */
+    protected function internalTransactionsSource(): ?array
+    {
+        if ($this->explorerApi instanceof InternalTransactionsInterface && $this->explorerApi->supportsInternalTransactions()) {
+            return [$this->explorer, $this->explorerApi];
+        }
+
+        $others = Ethereum::getModel(EthereumModel::Explorer)::query()
+            ->where('worked', '=', true)
+            ->where('available', '=', true)
+            ->whereKeyNot($this->explorer->getKey())
+            ->orderByCredits()
+            ->orderBy('requests')
+            ->get();
+
+        foreach ($others as $explorer) {
+            $api = $explorer->api();
+
+            if ($api instanceof InternalTransactionsInterface && $api->supportsInternalTransactions()) {
+                return [$explorer, $api];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * One row per transaction and direction: a transaction may send the address several
+     * internal transfers, they are summed. Failed calls, zero values and contract
+     * creations are not transfers.
+     *
+     * @param array<TransactionDTO> $items
+     */
+    protected function storeInternalTransactions(array $items): int
+    {
+        $own = Str::lower($this->address->address);
+        $groups = [];
+
+        foreach ($items as $item) {
+            if ($item->isError() || $item->contractAddress() || !$item->amount()->isPositive()) {
+                continue;
+            }
+
+            $type = match ($own) {
+                $item->to() => TransactionType::INCOMING,
+                $item->from() => TransactionType::OUTGOING,
+                default => null,
+            };
+
+            if ($type === null) {
+                continue;
+            }
+
+            $key = $item->hash().'|'.$type->value;
+
+            if (isset($groups[$key])) {
+                $groups[$key]['amount'] = $groups[$key]['amount']->plus($item->amount());
+            } else {
+                $groups[$key] = ['type' => $type, 'item' => $item, 'amount' => $item->amount()];
+            }
+        }
+
+        foreach ($groups as $group) {
+            $this->handleInternalTransaction($group['item'], $group['type'], $group['amount']);
+            $this->reportProgress('internal_transactions');
+        }
+
+        return count($groups);
+    }
+
+    protected function handleInternalTransaction(TransactionDTO $transaction, TransactionType $type, \Brick\Math\BigDecimal $amount): void
+    {
+        EthereumTransaction::updateOrCreate([
+            'txid' => $transaction->hash(),
+            'address' => $this->address->address,
+            'internal' => true,
+        ], [
+            'type' => $type,
+            'time_at' => $transaction->time(),
+            'from' => $transaction->from(),
+            'to' => $transaction->to(),
+            'amount' => $amount,
+            'token_address' => null,
+            'block_number' => $transaction->blockNumber(),
+            'data' => $transaction->toArray(),
+        ]);
+
+        if ($type !== TransactionType::INCOMING) {
+            return;
+        }
+
+        $deposit = $this->address
+            ->deposits()
+            ->updateOrCreate([
+                'txid' => $transaction->hash(),
+            ], [
+                'wallet_id' => $this->address->wallet_id,
+                'amount' => $amount,
+                'block_number' => $transaction->blockNumber(),
+                'confirmations' => max(0, $this->blockNumber - $transaction->blockNumber()),
+                'time_at' => $transaction->time(),
+            ]);
+
+        if ($deposit->wasRecentlyCreated) {
+            $deposit->setRelation('wallet', $this->wallet);
+            $deposit->setRelation('address', $this->address);
+
+            $this->webhooks[] = $deposit;
         }
     }
 

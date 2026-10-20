@@ -2,6 +2,22 @@
 
 All notable changes to `laravel-ethereum` will be documented in this file.
 
+## v1.9.0 - 2026-10-20
+
+### Added
+
+- Internal transfers: the ETH a contract sent to the address while executing a transaction (a bridge,
+  an exchange withdrawal, a smart wallet, the ETH of a swap) is recorded as an incoming transaction
+  (`ethereum_transactions.internal = true`) and a deposit; webhooks are called as for any deposit.
+  Several internal transfers of one transaction are summed; failed calls, zero values and contract
+  creations are skipped. Etherscan: one more request (`txlistinternal`) per sync; Alchemy on
+  Ethereum mainnet: in the same request. Without a source (Alchemy testnet and no Etherscan
+  explorer) a warning is logged. `ETHEREUM_SYNC_INTERNAL_TRANSACTIONS=false` turns it off.
+- `ethereum:sync-internal [--address=] [--from-block=0] [--webhooks]` — backfill of transfers synced
+  before; does not move the sync cursor and calls no webhooks without `--webhooks`.
+- **New migration** `add_internal_to_ethereum_transactions_table`: the unique key becomes
+  `txid, address, internal`. Publish and run it.
+
 ## v1.8.2 - 2026-10-19
 
 ### Fixed

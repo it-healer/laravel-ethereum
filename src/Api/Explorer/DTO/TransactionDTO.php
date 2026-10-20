@@ -85,4 +85,12 @@ class TransactionDTO extends BaseDTO
     {
         return (bool)$this->getOrFail('isError');
     }
+
+    /**
+     * A transfer a contract made while executing the transaction (not the transaction itself).
+     */
+    public function isInternal(): bool
+    {
+        return (bool)$this->get('internal', false);
+    }
 }

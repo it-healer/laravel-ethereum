@@ -19,7 +19,7 @@ use ItHealer\LaravelEthereum\Support\ProxyFormatter;
  * (toAddress / fromAddress); pagination is cursor based (pageKey). Confirmations are computed
  * from the latest block (Alchemy does not return them).
  */
-class AlchemyExplorerApi implements ExplorerApiInterface
+class AlchemyExplorerApi implements ExplorerApiInterface, InternalTransactionsInterface
 {
     protected ?string $proxy;
     protected ?int $latestBlock = null;
@@ -88,7 +88,37 @@ class AlchemyExplorerApi implements ExplorerApiInterface
         $items = null;
 
         return new DTOPaginator(function (int $page) use (&$items, $address, $startBlock, $perPage, $callback): array {
-            $items ??= $this->fetch($address, ['external'], null, $startBlock, false, $callback);
+            $categories = $this->combinesInternalTransactions() ? ['external', 'internal'] : ['external'];
+            $items ??= $this->fetch($address, $categories, null, $startBlock, false, $callback);
+
+            return array_slice($items, ($page - 1) * $perPage, $perPage);
+        }, $perPage);
+    }
+
+    /**
+     * Alchemy indexes internal transfers on Ethereum mainnet only (not on testnets).
+     */
+    public function supportsInternalTransactions(): bool
+    {
+        return str_contains((string)parse_url($this->baseURL, PHP_URL_HOST), 'eth-mainnet.');
+    }
+
+    /**
+     * Internal transfers come in the same alchemy_getAssetTransfers request as the external ones.
+     */
+    public function combinesInternalTransactions(): bool
+    {
+        return config('ethereum.sync.internal_transactions', true) && $this->supportsInternalTransactions();
+    }
+
+    public function getInternalTransactionsPaginator(string $address, int $startBlock = 0, int $perPage = 10, ?Closure $callback = null): DTOPaginator
+    {
+        $items = null;
+
+        return new DTOPaginator(function (int $page) use (&$items, $address, $startBlock, $perPage, $callback): array {
+            $items ??= $this->supportsInternalTransactions()
+                ? $this->fetch($address, ['internal'], null, $startBlock, false, $callback)
+                : [];
 
             return array_slice($items, ($page - 1) * $perPage, $perPage);
         }, $perPage);
@@ -193,6 +223,7 @@ class AlchemyExplorerApi implements ExplorerApiInterface
             'contractAddress' => '',
             'confirmations' => max(0, $latest - $block),
             'isError' => 0,
+            'internal' => ($item['category'] ?? null) === 'internal',
         ]);
     }
 

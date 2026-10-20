@@ -6,6 +6,7 @@ use ItHealer\LaravelEthereum\Console\Commands\AddressSyncCommand;
 use ItHealer\LaravelEthereum\Console\Commands\AlchemyReconcileCommand;
 use ItHealer\LaravelEthereum\Console\Commands\AlchemySetupCommand;
 use ItHealer\LaravelEthereum\Console\Commands\ConfirmDepositsCommand;
+use ItHealer\LaravelEthereum\Console\Commands\SyncInternalTransactionsCommand;
 use ItHealer\LaravelEthereum\Console\Commands\EthereumSyncCommand;
 use ItHealer\LaravelEthereum\Console\Commands\ExplorerSyncCommand;
 use ItHealer\LaravelEthereum\Console\Commands\NodeSyncCommand;
@@ -34,6 +35,7 @@ class EthereumServiceProvider extends PackageServiceProvider
                 AlchemySetupCommand::class,
                 AlchemyReconcileCommand::class,
                 ConfirmDepositsCommand::class,
+                SyncInternalTransactionsCommand::class,
             )
             ->discoversMigrations()
             ->hasInstallCommand(function(InstallCommand $command) {

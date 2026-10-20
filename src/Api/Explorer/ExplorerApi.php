@@ -12,7 +12,7 @@ use ItHealer\LaravelEthereum\Api\Explorer\DTO\GasOracleDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TokenTransactionDTO;
 use ItHealer\LaravelEthereum\Api\Explorer\DTO\TransactionDTO;
 
-class ExplorerApi implements ExplorerApiInterface
+class ExplorerApi implements ExplorerApiInterface, InternalTransactionsInterface
 {
     protected string $baseURL, $apiKey;
     protected ?string $proxy;
@@ -138,6 +138,52 @@ class ExplorerApi implements ExplorerApiInterface
                 }
 
                 return $this->getTransactions($address, $startBlock, $perPage, $page);
+            },
+            perPage: $perPage
+        );
+    }
+
+    public function supportsInternalTransactions(): bool
+    {
+        return true;
+    }
+
+    public function combinesInternalTransactions(): bool
+    {
+        return false;
+    }
+
+    /**
+     * @return array<TransactionDTO>
+     */
+    public function getInternalTransactions(string $address, int $startBlock = 0, int $limit = 10, int $page = 1): array
+    {
+        $data = $this->request([
+            'module' => 'account',
+            'action' => 'txlistinternal',
+            'address' => $address,
+            'startblock' => $startBlock,
+            'endblock' => '99999999',
+            'sort' => 'desc',
+            'page' => $page,
+            'offset' => $limit,
+        ]);
+
+        return array_map(fn ($item) => TransactionDTO::make([...$item, 'internal' => true]), $data);
+    }
+
+    /**
+     * @return DTOPaginator<TransactionDTO>
+     */
+    public function getInternalTransactionsPaginator(string $address, int $startBlock = 0, int $perPage = 10, ?Closure $callback = null): DTOPaginator
+    {
+        return new DTOPaginator(
+            callback: function (int $page) use ($address, $startBlock, $perPage, $callback) {
+                if (is_callable($callback)) {
+                    $callback();
+                }
+
+                return $this->getInternalTransactions($address, $startBlock, $perPage, $page);
             },
             perPage: $perPage
         );

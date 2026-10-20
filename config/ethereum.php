@@ -60,6 +60,15 @@ return [
          * driver, disabling this halves the alchemy_getAssetTransfers requests (and CU).
          */
         'track_outgoing' => (bool) env('ETHEREUM_SYNC_TRACK_OUTGOING', true),
+
+        /*
+         * Internal transfers: the ETH a contract sent to the address while executing a
+         * transaction (a bridge, an exchange withdrawal, a smart wallet, the ETH of a swap).
+         * They are recorded as incoming transactions and deposits like ordinary transfers.
+         * Alchemy (Ethereum mainnet) returns them in the same request; Etherscan needs one
+         * more request (txlistinternal) per sync.
+         */
+        'internal_transactions' => (bool) env('ETHEREUM_SYNC_INTERNAL_TRANSACTIONS', true),
     ],
 
     /*
